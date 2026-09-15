@@ -13,7 +13,8 @@ const env = {
   appId: process.env.EXPO_PUBLIC_APP_ID ?? "",
   ownerId: process.env.EXPO_PUBLIC_OWNER_OPEN_ID ?? "",
   ownerName: process.env.EXPO_PUBLIC_OWNER_NAME ?? "",
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "",
+  // Native EAS builds need a stable backend fallback; local and preview environments can override it.
+  apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://stealthmail-jf3daw3k.manus.space",
   deepLinkScheme: schemeFromBundleId,
 };
 
