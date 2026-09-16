@@ -1,0 +1,30 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: stealth_mail
+      MYSQL_USER: stealth
+      MYSQL_PASSWORD: change-this-local-password
+      MYSQL_ROOT_PASSWORD: change-this-root-password
+    ports:
+      - "3306:3306"
+    volumes:
+      - stealth_mysql_data:/var/lib/mysql
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_URL: mysql://stealth:change-this-local-password@mysql:3306/stealth_mail
+    ports:
+      - "3000:3000"
+
+volumes:
+  stealth_mysql_data:
