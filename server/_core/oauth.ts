@@ -2,7 +2,15 @@ import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import type { Express, Request, Response } from "express";
 import { getUserByOpenId, saveGoogleConnection, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
-import { sdk } from "./sdk";
+import {
+  authenticateRequest,
+  buildGoogleLoginUrl,
+  createSession,
+  encodeUserForRedirect,
+  getGoogleIdentity,
+  upsertGoogleUser,
+  verifyLoginState,
+} from "./independent-auth";
 import { encryptSecret, exchangeGoogleCode, getGmailProfile, verifyGoogleState } from "./google-oauth";
 
 function getQueryParam(req: Request, key: string): string | undefined {
@@ -10,50 +18,9 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-async function syncUser(userInfo: {
-  openId?: string | null;
-  name?: string | null;
-  email?: string | null;
-  loginMethod?: string | null;
-  platform?: string | null;
-}) {
-  if (!userInfo.openId) {
-    throw new Error("openId missing from user info");
-  }
-
-  const lastSignedIn = new Date();
-  await upsertUser({
-    openId: userInfo.openId,
-    name: userInfo.name || null,
-    email: userInfo.email ?? null,
-    loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-    lastSignedIn,
-  });
-  const saved = await getUserByOpenId(userInfo.openId);
-  return (
-    saved ?? {
-      openId: userInfo.openId,
-      name: userInfo.name,
-      email: userInfo.email,
-      loginMethod: userInfo.loginMethod ?? null,
-      lastSignedIn,
-    }
-  );
-}
-
-function buildUserResponse(
-  user:
-    | Awaited<ReturnType<typeof getUserByOpenId>>
-    | {
-        openId: string;
-        name?: string | null;
-        email?: string | null;
-        loginMethod?: string | null;
-        lastSignedIn?: Date | null;
-      },
-) {
+function buildUserResponse(user: any) {
   return {
-    id: (user as any)?.id ?? null,
+    id: user?.id ?? null,
     openId: user?.openId ?? null,
     name: user?.name ?? null,
     email: user?.email ?? null,
@@ -62,7 +29,65 @@ function buildUserResponse(
   };
 }
 
+function redirectWithParams(uri: string, params: Record<string, string>) {
+  const url = new URL(uri);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return url.toString();
+}
+
 export function registerOAuthRoutes(app: Express) {
+  // Independent app sign-in. Google redirects to the backend, which returns a
+  // short-lived mobile session to the app's registered deep-link URI.
+  app.get("/api/auth/google/start", async (req: Request, res: Response) => {
+    const redirectUri = getQueryParam(req, "redirectUri");
+    if (!redirectUri || !redirectUri.startsWith("manusstudio://")) {
+      res.status(400).json({ error: "A valid mobile redirect URI is required" });
+      return;
+    }
+    try {
+      res.redirect(302, await buildGoogleLoginUrl(redirectUri));
+    } catch (error) {
+      console.error("[Auth] Could not start Google sign-in", error);
+      res.status(500).json({ error: "Google sign-in is not configured" });
+    }
+  });
+
+  app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
+    const code = getQueryParam(req, "code");
+    const state = getQueryParam(req, "state");
+    if (!state) {
+      res.status(400).send("OAuth state is required");
+      return;
+    }
+    let redirectUri: string;
+    try {
+      redirectUri = await verifyLoginState(state);
+    } catch {
+      res.status(400).send("OAuth state is invalid or expired");
+      return;
+    }
+    if (!code) {
+      res.redirect(302, redirectWithParams(redirectUri, { error: "Google sign-in was cancelled" }));
+      return;
+    }
+    try {
+      const profile = await getGoogleIdentity(code);
+      const user = await upsertGoogleUser({ sub: profile.sub!, email: profile.email!, name: profile.name });
+      const sessionToken = await createSession(user);
+      const cookieOptions = getSessionCookieOptions(req);
+      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      res.redirect(302, redirectWithParams(redirectUri, {
+        sessionToken,
+        user: encodeUserForRedirect(user),
+      }));
+    } catch (error) {
+      console.error("[Auth] Google sign-in callback failed", error);
+      res.redirect(302, redirectWithParams(redirectUri, { error: "Google sign-in could not be completed" }));
+    }
+  });
+
+  // Connect Gmail/Sheets after the user is authenticated. This remains a
+  // protected tRPC procedure; its callback stores encrypted Google tokens.
   app.get("/api/google/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
@@ -90,77 +115,11 @@ export function registerOAuthRoutes(app: Express) {
         tokenExpiresAt: new Date(Date.now() + (tokenPayload.expires_in ?? 3600) * 1000),
         historyId: profile.historyId,
       });
-      const frontend = (process.env.EXPO_WEB_PREVIEW_URL || process.env.EXPO_PACKAGER_PROXY_URL || "https://8081-i6591vwobgljxyhazb3bj-76c0957c.us4.manus.computer").replace(/\/$/, "");
+      const frontend = (process.env.EXPO_WEB_PREVIEW_URL || process.env.EXPO_PACKAGER_PROXY_URL || "http://localhost:8081").replace(/\/$/, "");
       res.redirect(302, `${frontend}/senders?google=connected`);
     } catch (callbackError) {
       console.error("[Google OAuth] Callback failed", callbackError instanceof Error ? callbackError.message : "unknown error");
       res.status(500).send("Google connection could not be completed. Return to Stealth Mail Studio and try again.");
-    }
-  });
-
-  app.get("/api/oauth/callback", async (req: Request, res: Response) => {
-    const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
-
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
-      return;
-    }
-
-    try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      await syncUser(userInfo);
-      const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
-        name: userInfo.name || "",
-        expiresInMs: ONE_YEAR_MS,
-      });
-
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-
-      // Redirect to the frontend URL (Expo web on port 8081)
-      // Cookie is set with parent domain so it works across both 3000 and 8081 subdomains
-      const frontendUrl =
-        process.env.EXPO_WEB_PREVIEW_URL ||
-        process.env.EXPO_PACKAGER_PROXY_URL ||
-        "http://localhost:8081";
-      res.redirect(302, frontendUrl);
-    } catch (error) {
-      console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
-    }
-  });
-
-  app.get("/api/oauth/mobile", async (req: Request, res: Response) => {
-    const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
-
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
-      return;
-    }
-
-    try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      const user = await syncUser(userInfo);
-
-      const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
-        name: userInfo.name || "",
-        expiresInMs: ONE_YEAR_MS,
-      });
-
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-
-      res.json({
-        app_session_id: sessionToken,
-        user: buildUserResponse(user),
-      });
-    } catch (error) {
-      console.error("[OAuth] Mobile exchange failed", error);
-      res.status(500).json({ error: "OAuth mobile exchange failed" });
     }
   });
 
@@ -170,41 +129,12 @@ export function registerOAuthRoutes(app: Express) {
     res.json({ success: true });
   });
 
-  // Get current authenticated user - works with both cookie (web) and Bearer token (mobile)
   app.get("/api/auth/me", async (req: Request, res: Response) => {
     try {
-      const user = await sdk.authenticateRequest(req);
+      const user = await authenticateRequest(req);
       res.json({ user: buildUserResponse(user) });
-    } catch (error) {
-      console.error("[Auth] /api/auth/me failed:", error);
+    } catch {
       res.status(401).json({ error: "Not authenticated", user: null });
-    }
-  });
-
-  // Establish session cookie from Bearer token
-  // Used by iframe preview: frontend receives token via postMessage, then calls this endpoint
-  // to get a proper Set-Cookie response from the backend (3000-xxx domain)
-  app.post("/api/auth/session", async (req: Request, res: Response) => {
-    try {
-      // Authenticate using Bearer token from Authorization header
-      const user = await sdk.authenticateRequest(req);
-
-      // Get the token from the Authorization header to set as cookie
-      const authHeader = req.headers.authorization || req.headers.Authorization;
-      if (typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
-        res.status(400).json({ error: "Bearer token required" });
-        return;
-      }
-      const token = authHeader.slice("Bearer ".length).trim();
-
-      // Set cookie for this domain (3000-xxx)
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-
-      res.json({ success: true, user: buildUserResponse(user) });
-    } catch (error) {
-      console.error("[Auth] /api/auth/session failed:", error);
-      res.status(401).json({ error: "Invalid token" });
     }
   });
 }
