@@ -17,15 +17,14 @@ const bundleId =
     .split(".")
     .map((segment) => (/^[a-zA-Z]/.test(segment) ? segment : "x" + segment))
     .join(".") || "space.manus.app";
-const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
-const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   owner: "josephbhb",
   appName: "Stealth Mail Studio",
   appSlug: "stealth_mail_studio",
   logoUrl: "",
-  scheme: schemeFromBundleId,
+  // Must match constants/oauth.ts and the backend OAuth allow-list.
+  scheme: "manusstudio",
   iosBundleId: bundleId,
   androidPackage: bundleId,
 };
