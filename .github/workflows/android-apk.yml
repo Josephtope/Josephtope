@@ -32,13 +32,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build preview APK with EAS
+      - name: Set up EAS CLI
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Submit EAS build
+      - name: Link Expo project and build preview APK
         env:
-          EAS_PROJECT_ID: ${{ secrets.EAS_PROJECT_ID }}
-        run: eas build --platform android --profile preview --non-interactive --no-wait
+          EAS_PROJECT_ID: d0beddad-ce3f-4756-aeef-84349261e2d0
+        run: |
+          eas init --id "$EAS_PROJECT_ID" --non-interactive
+          eas build --platform android --profile preview --non-interactive --no-wait
