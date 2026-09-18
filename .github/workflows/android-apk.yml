@@ -41,6 +41,7 @@ jobs:
       - name: Link Expo project and build preview APK
         env:
           EAS_PROJECT_ID: d0beddad-ce3f-4756-aeef-84349261e2d0
+          EXPO_PUBLIC_API_BASE_URL: https://josephtope-production.up.railway.app
         run: |
           eas init --id "$EAS_PROJECT_ID" --non-interactive
           eas build --platform android --profile preview --non-interactive --no-wait
