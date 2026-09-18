@@ -45,8 +45,8 @@ export async function startOAuthLogin(): Promise<string | null> {
     if (typeof window !== "undefined") window.location.href = loginUrl;
     return null;
   }
-  const supported = await Linking.canOpenURL(loginUrl);
-  if (!supported) throw new Error("Unable to open Google sign-in");
-  await Linking.openURL(loginUrl);
+  // Android may return false for canOpenURL() on valid HTTPS browser URLs.
+await Linking.openURL(loginUrl);
+
   return null;
 }
