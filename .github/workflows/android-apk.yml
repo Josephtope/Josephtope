@@ -1,46 +1,37 @@
 name: Android APK (EAS)
-
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-
 permissions:
   contents: read
-
 jobs:
   build-android-apk:
     name: Build Android preview APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9.12.0
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Set up EAS CLI
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-
       - name: Link Expo project and build preview APK
         env:
-          EAS_PROJECT_ID: d0beddad-ce3f-4756-aeef-84349261e2d0
+          EAS_PROJECT_ID: ebda8f7d-2dce-40d2-8f77-d7b8c8d76e25
           EXPO_PUBLIC_API_BASE_URL: https://josephtope-production.up.railway.app
         run: |
           eas init --id "$EAS_PROJECT_ID" --non-interactive
