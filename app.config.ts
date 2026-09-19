@@ -2,10 +2,6 @@
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
 
-// Bundle ID format: space.manus.<project_name_dots>.<timestamp>
-// e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
-// Bundle ID can only contain letters, numbers, and dots
-// Android requires each dot-separated segment to start with a letter
 const rawBundleId = "com.app.stealth_mail_studio";
 const bundleId =
   rawBundleId
@@ -19,11 +15,10 @@ const bundleId =
     .join(".") || "space.manus.app";
 
 const env = {
-  owner: "josephbhb",
+  owner: "josephpvpgs-team",
   appName: "Stealth Mail Studio",
   appSlug: "stealth_mail_studio",
   logoUrl: "",
-  // Must match constants/oauth.ts and the backend OAuth allow-list.
   scheme: "manusstudio",
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -64,28 +59,16 @@ const config: ExpoConfig = {
       },
     ],
   },
-  web: {
-    bundler: "metro",
-    output: "static",
-    favicon: "./assets/images/favicon.png",
-  },
+  web: { bundler: "metro", output: "static", favicon: "./assets/images/favicon.png" },
   plugins: [
     "expo-router",
     ["expo-audio", { microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone." }],
     ["expo-video", { supportsBackgroundPlayback: true, supportsPictureInPicture: true }],
-    ["expo-splash-screen", {
-      image: "./assets/images/splash-icon.png",
-      imageWidth: 200,
-      resizeMode: "contain",
-      backgroundColor: "#ffffff",
-      dark: { backgroundColor: "#000000" },
-    }],
+    ["expo-splash-screen", { image: "./assets/images/splash-icon.png", imageWidth: 200, resizeMode: "contain", backgroundColor: "#ffffff", dark: { backgroundColor: "#000000" } }],
     ["expo-build-properties", { android: { buildArchs: ["armeabi-v7a", "arm64-v8a"], minSdkVersion: 24 } }],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
-  extra: {
-    eas: { projectId: process.env.EAS_PROJECT_ID ?? "d0beddad-ce3f-4756-aeef-84349261e2d0" },
-  },
+  extra: { eas: { projectId: process.env.EAS_PROJECT_ID ?? "ebda8f7d-2dce-40d2-8f77-d7b8c8d76e25" } },
 };
 
 export default config;
