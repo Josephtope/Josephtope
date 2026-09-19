@@ -51,7 +51,11 @@ const config: ExpoConfig = {
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
-      { action: "VIEW", autoVerify: true, data: [{ scheme: env.scheme, host: "*" }], category: ["BROWSABLE", "DEFAULT"] },
+      {
+        action: "VIEW",
+        category: ["BROWSABLE", "DEFAULT"],
+        data: [{ scheme: env.scheme }],
+      },
     ],
   },
   web: { bundler: "metro", output: "static", favicon: "./assets/images/favicon.png" },
