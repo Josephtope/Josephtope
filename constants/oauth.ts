@@ -1,4 +1,5 @@
 import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import * as ReactNative from "react-native";
 
 const env = {
@@ -45,8 +46,8 @@ export async function startOAuthLogin(): Promise<string | null> {
     if (typeof window !== "undefined") window.location.href = loginUrl;
     return null;
   }
-  // Android may return false for canOpenURL() on valid HTTPS browser URLs.
-await Linking.openURL(loginUrl);
-
+  const redirectUri = getRedirectUri();
+  await WebBrowser.openAuthSessionAsync(loginUrl, redirectUri);
+  // Expo Router handles the deep-link callback route automatically.
   return null;
 }
