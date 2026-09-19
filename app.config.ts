@@ -17,7 +17,7 @@ const bundleId =
 const env = {
   owner: "josephpvpgs-team",
   appName: "Stealth Mail Studio",
-  appSlug: "stealth_mail_studio",
+  appSlug: "joseph",
   logoUrl: "",
   scheme: "manusstudio",
   iosBundleId: bundleId,
@@ -51,12 +51,7 @@ const config: ExpoConfig = {
     package: env.androidPackage,
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
-      {
-        action: "VIEW",
-        autoVerify: true,
-        data: [{ scheme: env.scheme, host: "*" }],
-        category: ["BROWSABLE", "DEFAULT"],
-      },
+      { action: "VIEW", autoVerify: true, data: [{ scheme: env.scheme, host: "*" }], category: ["BROWSABLE", "DEFAULT"] },
     ],
   },
   web: { bundler: "metro", output: "static", favicon: "./assets/images/favicon.png" },
