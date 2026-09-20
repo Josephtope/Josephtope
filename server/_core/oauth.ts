@@ -82,7 +82,13 @@ export function registerOAuthRoutes(app: Express) {
       }));
     } catch (error) {
       console.error("[Auth] Google sign-in callback failed", error);
-      res.redirect(302, redirectWithParams(redirectUri, { error: "Google sign-in could not be completed" }));
+      const reason = error instanceof Error ? error.message : "Unknown server error";
+      const safeReason = reason
+        .replace(/GOOGLE_OAUTH_CLIENT_SECRET=\S+/gi, "GOOGLE_OAUTH_CLIENT_SECRET=[redacted]")
+        .replace(/client_secret[=:\s]+\S+/gi, "client_secret=[redacted]");
+      res.redirect(302, redirectWithParams(redirectUri, {
+        error: `Google sign-in failed: ${safeReason}`,
+      }));
     }
   });
 
@@ -128,7 +134,6 @@ export function registerOAuthRoutes(app: Express) {
     res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
     res.json({ success: true });
   });
-
   app.get("/api/auth/me", async (req: Request, res: Response) => {
     try {
       const user = await authenticateRequest(req);
