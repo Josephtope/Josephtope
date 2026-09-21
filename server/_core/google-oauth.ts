@@ -24,26 +24,32 @@ function signingKey() {
   return crypto.createHash("sha256").update(ENV.cookieSecret).digest();
 }
 
-export function createGoogleState(userId: number) {
-  const payload = `${userId}.${Date.now()}.${base64url(crypto.randomBytes(18))}`;
+export function createGoogleState(userId: number, returnUri: string) {
+  const payload = base64url(JSON.stringify({ userId, issuedAt: Date.now(), nonce: base64url(crypto.randomBytes(18)), returnUri }));
   const signature = crypto.createHmac("sha256", signingKey()).update(payload).digest("base64url");
   return `${base64url(payload)}.${signature}`;
 }
 
-export function verifyGoogleState(state: string): number {
+export function verifyGoogleState(state: string): { userId: number; returnUri: string } {
   const [encodedPayload, signature] = state.split(".");
   if (!encodedPayload || !signature) throw new Error("Invalid Google OAuth state.");
   const payload = Buffer.from(encodedPayload, "base64url").toString("utf8");
   const expected = crypto.createHmac("sha256", signingKey()).update(payload).digest("base64url");
   if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) throw new Error("Invalid Google OAuth state signature.");
-  const [userIdText, issuedAtText] = payload.split(".");
-  const userId = Number(userIdText);
-  const issuedAt = Number(issuedAtText);
-  if (!Number.isInteger(userId) || !Number.isFinite(issuedAt) || Date.now() - issuedAt > 10 * 60 * 1000) throw new Error("Expired Google OAuth state.");
-  return userId;
+  let statePayload: { userId?: number; issuedAt?: number; returnUri?: string };
+  try {
+    statePayload = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  } catch {
+    throw new Error("Invalid Google OAuth state payload.");
+  }
+  const { userId, issuedAt, returnUri } = statePayload;
+  if (typeof userId !== "number" || !Number.isInteger(userId) || typeof issuedAt !== "number" || !Number.isFinite(issuedAt) || typeof returnUri !== "string" || !returnUri || Date.now() - issuedAt > 10 * 60 * 1000) {
+    throw new Error("Expired Google OAuth state.");
+  }
+  return { userId, returnUri };
 }
 
-export function buildGoogleAuthorizationUrl(userId: number) {
+export function buildGoogleAuthorizationUrl(userId: number, returnUri: string) {
   const { clientId, redirectUri } = requireConfig();
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", clientId);
@@ -53,7 +59,7 @@ export function buildGoogleAuthorizationUrl(userId: number) {
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("scope", GOOGLE_SCOPES.join(" "));
-  url.searchParams.set("state", createGoogleState(userId));
+  url.searchParams.set("state", createGoogleState(userId, returnUri));
   return url.toString();
 }
 
