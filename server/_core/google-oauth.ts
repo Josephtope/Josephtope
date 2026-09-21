@@ -24,7 +24,7 @@ function signingKey() {
   return crypto.createHash("sha256").update(ENV.cookieSecret).digest();
 }
 
-export function createGoogleState(userId: number, returnUri: string) {
+export function createGoogleState(userId: number, returnUri = "manusstudio://oauth/callback") {
   const payload = base64url(JSON.stringify({ userId, issuedAt: Date.now(), nonce: base64url(crypto.randomBytes(18)), returnUri }));
   const signature = crypto.createHmac("sha256", signingKey()).update(payload).digest("base64url");
   return `${base64url(payload)}.${signature}`;
@@ -49,7 +49,7 @@ export function verifyGoogleState(state: string): { userId: number; returnUri: s
   return { userId, returnUri };
 }
 
-export function buildGoogleAuthorizationUrl(userId: number, returnUri: string) {
+export function buildGoogleAuthorizationUrl(userId: number, returnUri?: string) {
   const { clientId, redirectUri } = requireConfig();
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", clientId);
