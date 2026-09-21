@@ -10,7 +10,7 @@ export const GOOGLE_SCOPES = [
 function requireConfig() {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
+  const redirectUri = process.env.GOOGLE_CONNECTION_REDIRECT_URI;
   if (!clientId || !clientSecret || !redirectUri) throw new Error("Google OAuth credentials are not configured.");
   if (!ENV.cookieSecret) throw new Error("Server signing secret is not configured.");
   return { clientId, clientSecret, redirectUri };
