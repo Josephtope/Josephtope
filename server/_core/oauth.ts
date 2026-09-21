@@ -2,6 +2,9 @@ import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import type { Express, Request, Response } from "express";
 import { getUserByOpenId, saveGoogleConnection, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
+
+const OAUTH_STATE_COOKIE = "stealth_oauth_state";
+const OAUTH_STATE_MAX_AGE = 10 * 60 * 1000;
 import {
   authenticateRequest,
   buildGoogleLoginUrl,
@@ -16,6 +19,14 @@ import { encryptSecret, exchangeGoogleCode, getGmailProfile, verifyGoogleState }
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function getCookie(req: Request, name: string): string | undefined {
+  const header = req.headers.cookie;
+  if (!header) return undefined;
+  const prefix = `${name}=`;
+  const entry = header.split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix));
+  return entry ? decodeURIComponent(entry.slice(prefix.length)) : undefined;
 }
 
 function buildUserResponse(user: any) {
@@ -45,7 +56,14 @@ export function registerOAuthRoutes(app: Express) {
       return;
     }
     try {
-      res.redirect(302, await buildGoogleLoginUrl(redirectUri));
+      const state = await buildGoogleLoginUrl(redirectUri);
+      const stateValue = new URL(state).searchParams.get("state");
+      if (!stateValue) throw new Error("OAuth state was not generated");
+      res.cookie(OAUTH_STATE_COOKIE, stateValue, {
+        ...getSessionCookieOptions(req),
+        maxAge: OAUTH_STATE_MAX_AGE,
+      });
+      res.redirect(302, state);
     } catch (error) {
       console.error("[Auth] Could not start Google sign-in", error);
       res.status(500).json({ error: "Google sign-in is not configured" });
@@ -54,7 +72,9 @@ export function registerOAuthRoutes(app: Express) {
 
   app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
+    const queryState = getQueryParam(req, "state");
+    const cookieState = getCookie(req, OAUTH_STATE_COOKIE);
+    const state = queryState || cookieState;
     if (!state) {
       res.status(400).send("OAuth state is required");
       return;
@@ -63,9 +83,18 @@ export function registerOAuthRoutes(app: Express) {
     try {
       redirectUri = await verifyLoginState(state);
     } catch {
-      res.status(400).send("OAuth state is invalid or expired");
-      return;
+      if (!cookieState || state === cookieState) {
+        res.status(400).send("OAuth state is invalid or expired");
+        return;
+      }
+      try {
+        redirectUri = await verifyLoginState(cookieState);
+      } catch {
+        res.status(400).send("OAuth state is invalid or expired");
+        return;
+      }
     }
+    res.clearCookie(OAUTH_STATE_COOKIE, getSessionCookieOptions(req));
     if (!code) {
       res.redirect(302, redirectWithParams(redirectUri, { error: "Google sign-in was cancelled" }));
       return;
