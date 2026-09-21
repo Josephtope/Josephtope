@@ -11,9 +11,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 RUN corepack enable
 COPY --from=build /app/package.json /app/pnpm-lock.yaml ./
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
 EXPOSE 3000
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "pnpm drizzle-kit migrate && node dist/index.js"]
